@@ -37,12 +37,9 @@
 
   /* 실패 안내 */
   #large-file-warn {
-    display: none;
-    background: var(--surface);
+    display: none; background: var(--surface);
     border: 1px solid rgba(247,139,113,0.4);
-    border-radius: 12px;
-    padding: 20px 22px;
-    text-align: center;
+    border-radius: 12px; padding: 20px 22px; text-align: center;
   }
   #large-file-warn .warn-ico { font-size: 32px; margin-bottom: 10px; }
   #large-file-warn h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #fca084; }
@@ -135,22 +132,25 @@
   <div id="drop-zone" onclick="document.getElementById('file-in').click()">
     <div class="ico">📁</div>
     <strong>영상 또는 오디오 파일을 여기에 드래그하거나 클릭해서 선택</strong>
-    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등 · 용량 제한 없음</span>
+    <span>MP4 · MOV · MKV · MP3 · AAC · M4A · WAV 등 · 최대 25MB</span>
   </div>
   <input type="file" id="file-in" accept="video/*,audio/*">
 
-  <!-- 실패 시 안내 -->
+  <!-- 실패 안내 -->
   <div id="large-file-warn">
     <div class="warn-ico">⚠️</div>
-    <h3>파일이 너무 커서 처리하지 못했어요</h3>
-    <p>영상이 길거나 용량이 크면 브라우저에서 처리하기 어려울 수 있어요.<br>MP3로 변환 후 다시 올리면 해결돼요!</p>
+    <h3>파일이 너무 커서 처리하지 못했어요 (25MB 초과)</h3>
+    <p>파일을 더 작게 압축하거나 오디오만 추출해서 올려주세요.<br>아래 방법 중 하나를 사용하면 쉽게 해결돼요!</p>
     <div class="warn-steps">
-      1️⃣ 아래 버튼으로 <span>CloudConvert</span> 사이트로 이동<br>
-      2️⃣ 영상 파일 업로드 → <span>MP3</span> 선택 → 변환<br>
-      3️⃣ MP3 다운로드 후 여기에 다시 올리기
+      <strong style="color:var(--accent)">방법 1. FreeConvert (온라인, 무료)</strong><br>
+      1️⃣ 아래 버튼 클릭 → 영상 업로드<br>
+      2️⃣ MP3 선택 → Audio Bitrate <span>64kbps</span> 설정 → 변환<br>
+      3️⃣ 다운로드 후 여기에 다시 올리기<br><br>
+      <strong style="color:var(--accent)">방법 2. 다빈치 리졸브 / 곰믹스 등</strong><br>
+      오디오만 추출 → AAC 또는 MP3 → <span>64kbps</span> 이하로 설정
     </div>
     <div class="btn-group">
-      <a class="btn orange" href="https://cloudconvert.com/mp4-to-mp3" target="_blank">🔗 CloudConvert에서 MP3 변환하기</a>
+      <a class="btn orange" href="https://www.freeconvert.com/video-to-mp3" target="_blank">🔗 FreeConvert에서 변환하기</a>
       <button class="btn" onclick="resetAll()">↺ 다른 파일 선택</button>
     </div>
   </div>
@@ -171,7 +171,7 @@
       <span id="progress-pct">0%</span>
     </div>
     <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
-    <div class="progress-status" id="progress-status">오디오 추출 중...</div>
+    <div class="progress-status" id="progress-status">파일 전송 중...</div>
   </div>
 
   <div id="transcript-wrap">
@@ -191,7 +191,7 @@
 
   <div class="notice">
     ⚠️ 업로드하는 파일의 저작권 책임은 사용자에게 있습니다.<br>
-    🎵 영상을 올리면 브라우저가 자동으로 오디오만 추출 후 Groq Whisper로 인식해요.<br>
+    📦 최대 25MB · 긴 영상은 오디오(MP3/AAC)만 추출해서 올리면 더 빠르고 안정적이에요.<br>
     🔒 파일은 자막 추출 후 즉시 삭제되며 저장되지 않습니다.
   </div>
 </div>
@@ -211,43 +211,43 @@
   async function handleFile(file) {
     if (!file) return;
 
+    // 25MB 초과 즉시 안내
+    if (file.size > 25 * 1024 * 1024) {
+      showLargeFileWarn();
+      return;
+    }
+
+    // 비디오면 미리보기, 오디오면 빈 플레이어
+    const isVideo = file.type.startsWith('video/');
     video.src = URL.createObjectURL(file);
     dz.style.display = 'none';
     document.getElementById('large-file-warn').style.display = 'none';
-    document.getElementById('video-section').style.display = 'flex';
+    document.getElementById('video-section').style.display = isVideo ? 'flex' : 'none';
     document.getElementById('transcript-wrap').style.display = 'block';
     document.getElementById('progress-wrap').style.display = 'block';
     segs = [];
     renderTranscript();
-    setProgress(5, '오디오 추출 중...');
+    setProgress(5, 'Groq Whisper로 전송 중...');
 
     try {
+      // API 키 가져오기
       const keyRes = await fetch('/api/key');
       const { key } = await keyRes.json();
       if (!key) throw new Error('API 키를 가져올 수 없어요');
 
-      setProgress(10, '오디오 디코딩 중...');
-      let audioBlob;
-      try {
-        audioBlob = await extractAudio(file);
-      } catch (e) {
-        // 오디오 추출 실패 → 큰 파일 안내
-        showLargeFileWarn();
-        return;
-      }
+      setProgress(15, '음성 인식 중...');
 
-      setProgress(35, 'Groq Whisper로 전송 중...');
-
+      // 원본 파일 그대로 Groq에 전송 (WAV 변환 없음)
       const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.wav');
+      formData.append('file', file, file.name);
       formData.append('model', 'whisper-large-v3');
       formData.append('language', 'ko');
       formData.append('response_format', 'verbose_json');
       formData.append('timestamp_granularities[]', 'segment');
 
-      let pct = 35;
+      let pct = 15;
       const interval = setInterval(() => {
-        if (pct < 90) { pct += Math.random() * 4; setProgress(Math.round(Math.min(pct, 90)), '음성 인식 중...'); }
+        if (pct < 90) { pct += Math.random() * 5; setProgress(Math.round(Math.min(pct, 90)), '음성 인식 중...'); }
       }, 600);
 
       const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -260,6 +260,11 @@
 
       if (!res.ok) {
         const err = await res.json();
+        // 25MB 초과 오류면 안내 화면
+        if (res.status === 413 || (err.error?.message || '').includes('too large')) {
+          showLargeFileWarn();
+          return;
+        }
         throw new Error(err.error?.message || 'Groq 오류');
       }
 
@@ -282,55 +287,11 @@
   }
 
   function showLargeFileWarn() {
+    dz.style.display = 'none';
     document.getElementById('video-section').style.display = 'none';
     document.getElementById('progress-wrap').style.display = 'none';
     document.getElementById('transcript-wrap').style.display = 'none';
     document.getElementById('large-file-warn').style.display = 'block';
-  }
-
-  function extractAudio(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const audioCtx = new AudioContext();
-          const audioBuffer = await audioCtx.decodeAudioData(e.target.result);
-          setProgress(20, '오디오 인코딩 중...');
-          const offlineCtx = new OfflineAudioContext(1, Math.floor(audioBuffer.duration * 16000), 16000);
-          const source = offlineCtx.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(offlineCtx.destination);
-          source.start();
-          const rendered = await offlineCtx.startRendering();
-          resolve(audioBufferToWav(rendered));
-        } catch (err) { reject(err); }
-      };
-      reader.onerror = () => reject(new Error('파일 읽기 실패'));
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  function audioBufferToWav(buffer) {
-    const samples = buffer.getChannelData(0);
-    const dataLen = samples.length * 2;
-    const ab = new ArrayBuffer(44 + dataLen);
-    const view = new DataView(ab);
-    const sr = buffer.sampleRate;
-    const wStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
-    wStr(0, 'RIFF'); view.setUint32(4, 36 + dataLen, true);
-    wStr(8, 'WAVE'); wStr(12, 'fmt ');
-    view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true); view.setUint32(24, sr, true);
-    view.setUint32(28, sr * 2, true); view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true); wStr(36, 'data');
-    view.setUint32(40, dataLen, true);
-    let offset = 44;
-    for (let i = 0; i < samples.length; i++) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-      offset += 2;
-    }
-    return new Blob([ab], { type: 'audio/wav' });
   }
 
   function setProgress(pct, status) {
