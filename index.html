@@ -35,7 +35,7 @@
   #drop-zone span { font-size: 13px; color: var(--muted); }
   input[type=file] { display: none; }
 
-  /* Large file warning */
+  /* 실패 안내 */
   #large-file-warn {
     display: none;
     background: var(--surface);
@@ -48,14 +48,9 @@
   #large-file-warn h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #fca084; }
   #large-file-warn p { font-size: 13px; color: var(--muted); line-height: 1.7; margin-bottom: 16px; }
   .warn-steps {
-    text-align: left;
-    background: var(--surface2);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    font-size: 13px;
-    line-height: 2;
-    color: var(--text);
+    text-align: left; background: var(--surface2);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;
+    font-size: 13px; line-height: 2; color: var(--text);
   }
   .warn-steps span { color: var(--accent); font-weight: 500; }
   .btn-group { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
@@ -92,8 +87,6 @@
   }
   .btn:hover { border-color: var(--accent); color: var(--accent); }
   .btn:active { transform: scale(0.97); }
-  .btn.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
-  .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn.orange { background: rgba(251,146,60,0.15); border-color: rgba(251,146,60,0.5); color: #fb923c; }
   .btn.orange:hover { background: rgba(251,146,60,0.25); color: #fb923c; }
 
@@ -142,15 +135,15 @@
   <div id="drop-zone" onclick="document.getElementById('file-in').click()">
     <div class="ico">📁</div>
     <strong>영상 또는 오디오 파일을 여기에 드래그하거나 클릭해서 선택</strong>
-    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등</span>
+    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등 · 용량 제한 없음</span>
   </div>
   <input type="file" id="file-in" accept="video/*,audio/*">
 
-  <!-- 큰 파일 안내 -->
+  <!-- 실패 시 안내 -->
   <div id="large-file-warn">
     <div class="warn-ico">⚠️</div>
-    <h3>영상이 너무 커서 바로 처리하기 어려워요</h3>
-    <p>20분 이상이거나 500MB가 넘는 파일은 먼저 MP3로 변환해야 해요.<br>아래 순서대로 하면 1~2분이면 끝나요!</p>
+    <h3>파일이 너무 커서 처리하지 못했어요</h3>
+    <p>영상이 길거나 용량이 크면 브라우저에서 처리하기 어려울 수 있어요.<br>MP3로 변환 후 다시 올리면 해결돼요!</p>
     <div class="warn-steps">
       1️⃣ 아래 버튼으로 <span>CloudConvert</span> 사이트로 이동<br>
       2️⃣ 영상 파일 업로드 → <span>MP3</span> 선택 → 변환<br>
@@ -209,10 +202,6 @@
   const overlay = document.getElementById('subtitle-overlay');
   const subText = document.getElementById('sub-text');
 
-  // 20분(1200초) 또는 500MB 초과 시 안내
-  const MAX_DURATION_SEC = 1200;
-  const MAX_SIZE_BYTES = 500 * 1024 * 1024;
-
   const dz = document.getElementById('drop-zone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('over'));
@@ -222,22 +211,9 @@
   async function handleFile(file) {
     if (!file) return;
 
-    // 용량 체크
-    if (file.size > MAX_SIZE_BYTES) {
-      showLargeFileWarn();
-      return;
-    }
-
-    // 영상 길이 체크
-    const duration = await getVideoDuration(file);
-    if (duration > MAX_DURATION_SEC) {
-      showLargeFileWarn();
-      return;
-    }
-
-    // 정상 처리
     video.src = URL.createObjectURL(file);
     dz.style.display = 'none';
+    document.getElementById('large-file-warn').style.display = 'none';
     document.getElementById('video-section').style.display = 'flex';
     document.getElementById('transcript-wrap').style.display = 'block';
     document.getElementById('progress-wrap').style.display = 'block';
@@ -251,7 +227,15 @@
       if (!key) throw new Error('API 키를 가져올 수 없어요');
 
       setProgress(10, '오디오 디코딩 중...');
-      const audioBlob = await extractAudio(file);
+      let audioBlob;
+      try {
+        audioBlob = await extractAudio(file);
+      } catch (e) {
+        // 오디오 추출 실패 → 큰 파일 안내
+        showLargeFileWarn();
+        return;
+      }
+
       setProgress(35, 'Groq Whisper로 전송 중...');
 
       const formData = new FormData();
@@ -297,22 +281,11 @@
     }
   }
 
-  function getVideoDuration(file) {
-    return new Promise(resolve => {
-      const el = document.createElement('video');
-      el.preload = 'metadata';
-      el.onloadedmetadata = () => { resolve(el.duration); URL.revokeObjectURL(el.src); };
-      el.onerror = () => resolve(0);
-      el.src = URL.createObjectURL(file);
-    });
-  }
-
   function showLargeFileWarn() {
-    dz.style.display = 'none';
-    document.getElementById('large-file-warn').style.display = 'block';
     document.getElementById('video-section').style.display = 'none';
     document.getElementById('progress-wrap').style.display = 'none';
     document.getElementById('transcript-wrap').style.display = 'none';
+    document.getElementById('large-file-warn').style.display = 'block';
   }
 
   function extractAudio(file) {
