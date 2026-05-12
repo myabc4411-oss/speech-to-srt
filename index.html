@@ -1,36 +1,374 @@
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  try {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const buffer = Buffer.concat(chunks);
-
-    const groqRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-        'Content-Type': req.headers['content-type'],
-      },
-      body: buffer,
-    });
-
-    const data = await groqRes.json();
-    if (!groqRes.ok) return res.status(groqRes.status).json(data);
-    return res.status(200).json(data);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message });
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>speech-to-srt</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0e0e10;
+    --surface: #18181b;
+    --surface2: #222226;
+    --border: #2e2e34;
+    --accent: #a78bfa;
+    --accent2: #7c3aed;
+    --text: #f4f4f5;
+    --muted: #71717a;
+    --danger: #f87171;
+    --success: #4ade80;
   }
-}
+  html, body { height: 100%; }
+  body {
+    font-family: 'Pretendard', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 3rem;
+  }
+  .header { text-align: center; margin-bottom: 2rem; }
+  .header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
+  .header p { font-size: 13px; color: var(--muted); }
+  .container { width: 100%; max-width: 740px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Drop zone */
+  #drop-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 14px;
+    padding: 3rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+  }
+  #drop-zone:hover, #drop-zone.over { border-color: var(--accent); background: #1c1a2e; }
+  #drop-zone .ico { font-size: 40px; margin-bottom: 14px; }
+  #drop-zone strong { display: block; font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+  #drop-zone span { font-size: 13px; color: var(--muted); }
+  input[type=file] { display: none; }
+
+  /* Video */
+  #video-section { display: none; flex-direction: column; gap: 10px; }
+  .video-wrapper {
+    position: relative; background: #000;
+    border-radius: 10px; overflow: hidden; line-height: 0;
+  }
+  video { width: 100%; display: block; max-height: 360px; object-fit: contain; background: #000; }
+
+  /* Subtitle overlay */
+  #subtitle-overlay {
+    position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
+    width: 92%; text-align: center; pointer-events: none; display: none;
+  }
+  .sub-bg {
+    display: inline-block; padding: 6px 16px;
+    background: rgba(0,0,0,0.82); border-radius: 6px;
+    font-size: 17px; font-weight: 500; color: #fff;
+    line-height: 1.55; max-width: 100%;
+  }
+
+  /* Progress */
+  #progress-wrap {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .progress-label { font-size: 13px; color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .progress-bar-bg { background: var(--surface2); border-radius: 100px; height: 6px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--accent2); border-radius: 100px; transition: width 0.3s; width: 0%; }
+  .progress-status { font-size: 12px; color: var(--accent); margin-top: 8px; }
+
+  /* Buttons */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text);
+    font-size: 13px; font-family: inherit; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+  .btn.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* Transcript */
+  #transcript-wrap { display: none; }
+  .t-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .t-label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 100px; background: rgba(167,139,250,0.15); color: var(--accent); font-weight: 500; margin-left: 8px; }
+  .t-actions { display: flex; gap: 6px; }
+
+  #transcript-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    font-size: 13.5px; font-family: 'JetBrains Mono', monospace;
+    line-height: 1.9; max-height: 260px; overflow-y: auto;
+    color: var(--text); scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  #transcript-box::-webkit-scrollbar { width: 4px; }
+  #transcript-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .seg-row {
+    display: flex; gap: 10px; padding: 4px 0;
+    border-bottom: 1px solid rgba(46,46,52,0.5); transition: background 0.2s;
+  }
+  .seg-row:last-child { border-bottom: none; }
+  .seg-row.active { background: rgba(167,139,250,0.08); border-radius: 4px; padding-left: 4px; }
+  .seg-row.active .seg-text { color: var(--accent); }
+  .seg-time { color: var(--muted); min-width: 88px; font-size: 12px; padding-top: 2px; flex-shrink: 0; }
+  .seg-text { color: var(--text); }
+
+  /* Notice */
+  .notice {
+    padding: 12px 14px;
+    background: rgba(251,191,36,0.07);
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 8px; font-size: 12.5px; color: #a18545; line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎬 speech-to-srt</h1>
+  <p>영상 음성을 자동으로 인식해 텍스트·SRT 자막으로 변환합니다</p>
+</div>
+
+<div class="container">
+
+  <div id="drop-zone" onclick="document.getElementById('file-in').click()">
+    <div class="ico">📁</div>
+    <strong>영상 또는 오디오 파일을 여기에 드래그하거나 클릭해서 선택</strong>
+    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등 · 최대 25MB</span>
+  </div>
+  <input type="file" id="file-in" accept="video/*,audio/*">
+
+  <!-- Video player -->
+  <div id="video-section">
+    <div class="video-wrapper">
+      <video id="player" controls></video>
+      <div id="subtitle-overlay">
+        <div class="sub-bg" id="sub-text"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" onclick="resetAll()">↺ 다른 파일 선택</button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div id="progress-wrap">
+    <div class="progress-label">
+      <span id="progress-label-text">음성 인식 중...</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+    <div class="progress-status" id="progress-status">파일을 서버로 전송하는 중...</div>
+  </div>
+
+  <!-- Transcript -->
+  <div id="transcript-wrap">
+    <div class="t-header">
+      <div>
+        <span class="t-label">추출된 텍스트</span>
+        <span class="badge" id="cnt">0개 문장</span>
+      </div>
+      <div class="t-actions">
+        <button class="btn" onclick="dlTxt()">📄 TXT</button>
+        <button class="btn" onclick="dlSrt()">🎞 SRT</button>
+        <button class="btn" onclick="cp()">복사</button>
+      </div>
+    </div>
+    <div id="transcript-box"><span style="color:var(--muted);font-size:13px;">인식된 텍스트가 여기에 표시됩니다...</span></div>
+  </div>
+
+  <div class="notice">
+    ⚠️ 업로드하는 파일의 저작권 책임은 사용자에게 있습니다.<br>
+    📦 파일 크기 제한: 최대 25MB · 긴 영상은 오디오만 추출해서 올리면 더 빠릅니다.<br>
+    🔒 파일은 자막 추출 후 즉시 삭제되며 저장되지 않습니다.
+  </div>
+
+</div>
+
+<script>
+  let segs = [];
+  const video = document.getElementById('player');
+  const overlay = document.getElementById('subtitle-overlay');
+  const subText = document.getElementById('sub-text');
+
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
+  document.getElementById('file-in').addEventListener('change', e => handleFile(e.target.files[0]));
+
+  async function handleFile(file) {
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert('파일 크기가 25MB를 초과해요. 더 작은 파일을 사용해 주세요.');
+      return;
+    }
+
+    // Show video preview
+    video.src = URL.createObjectURL(file);
+    dz.style.display = 'none';
+    document.getElementById('video-section').style.display = 'flex';
+    document.getElementById('transcript-wrap').style.display = 'none';
+    segs = [];
+
+    // Start transcription
+    await transcribe(file);
+  }
+
+  async function transcribe(file) {
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPct = document.getElementById('progress-pct');
+    const progressStatus = document.getElementById('progress-status');
+
+    progressWrap.style.display = 'block';
+    document.getElementById('transcript-wrap').style.display = 'block';
+
+    // Animate progress (fake progress while waiting)
+    let pct = 0;
+    const interval = setInterval(() => {
+      if (pct < 90) {
+        pct += Math.random() * 8;
+        pct = Math.min(pct, 90);
+        progressFill.style.width = pct + '%';
+        progressPct.textContent = Math.round(pct) + '%';
+      }
+    }, 400);
+
+    progressStatus.textContent = '파일을 전송하고 음성을 인식하는 중...';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file, file.name);
+      formData.append('model', 'whisper-large-v3');
+      formData.append('language', 'ko');
+      formData.append('response_format', 'verbose_json');
+      formData.append('timestamp_granularities[]', 'segment');
+
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      clearInterval(interval);
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || '서버 오류가 발생했어요');
+      }
+
+      const data = await res.json();
+
+      progressFill.style.width = '100%';
+      progressPct.textContent = '100%';
+      progressStatus.textContent = '완료! ✅';
+
+      setTimeout(() => { progressWrap.style.display = 'none'; }, 1000);
+
+      // Parse segments
+      if (data.segments && data.segments.length > 0) {
+        segs = data.segments.map(s => ({ s: s.start, e: s.end, t: s.text.trim() }));
+      } else if (data.text) {
+        segs = [{ s: 0, e: video.duration || 0, t: data.text.trim() }];
+      }
+
+      renderTranscript();
+
+    } catch (err) {
+      clearInterval(interval);
+      progressStatus.textContent = '오류: ' + err.message;
+      progressFill.style.background = '#f87171';
+      console.error(err);
+    }
+  }
+
+  // Sync subtitle overlay with video playback
+  video.addEventListener('timeupdate', () => {
+    if (segs.length === 0) return;
+    const t = video.currentTime;
+    const active = segs.find(s => t >= s.s && t <= s.e);
+    if (active) {
+      subText.textContent = active.t;
+      overlay.style.display = 'block';
+    } else {
+      overlay.style.display = 'none';
+    }
+    document.querySelectorAll('.seg-row').forEach((row, i) => {
+      const seg = segs[i];
+      if (seg && t >= seg.s && t <= seg.e) {
+        row.classList.add('active');
+        row.scrollIntoView({ block: 'nearest' });
+      } else {
+        row.classList.remove('active');
+      }
+    });
+  });
+
+  function resetAll() {
+    video.src = '';
+    dz.style.display = 'block';
+    document.getElementById('video-section').style.display = 'none';
+    document.getElementById('progress-wrap').style.display = 'none';
+    document.getElementById('transcript-wrap').style.display = 'none';
+    overlay.style.display = 'none';
+    document.getElementById('file-in').value = '';
+    segs = [];
+    renderTranscript();
+  }
+
+  function renderTranscript() {
+    const box = document.getElementById('transcript-box');
+    document.getElementById('cnt').textContent = segs.length + '개 문장';
+    if (segs.length === 0) {
+      box.innerHTML = '<span style="color:var(--muted);font-size:13px;">인식된 텍스트가 여기에 표시됩니다...</span>';
+      return;
+    }
+    box.innerHTML = segs.map((seg, i) =>
+      `<div class="seg-row" data-i="${i}">
+        <span class="seg-time">${fmt(seg.s)}</span>
+        <span class="seg-text">${esc(seg.t)}</span>
+      </div>`
+    ).join('');
+  }
+
+  function fmt(sec) {
+    const m = Math.floor(sec/60), s = Math.floor(sec%60);
+    return `${p2(m)}:${p2(s)}`;
+  }
+  function ts(sec) {
+    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60),
+          s = Math.floor(sec%60), ms = Math.round((sec%1)*1000);
+    return `${p2(h)}:${p2(m)}:${p2(s)},${String(ms).padStart(3,'0')}`;
+  }
+  function p2(n) { return String(n).padStart(2,'0'); }
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function buildSrt() { return segs.map((g,i) => `${i+1}\n${ts(g.s)} --> ${ts(g.e)}\n${g.t}\n`).join('\n'); }
+  function buildTxt() { return segs.map(g => g.t).join('\n'); }
+  function dl(content, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], {type:'text/plain;charset=utf-8'}));
+    a.download = name; a.click();
+  }
+  function dlTxt() { if (!segs.length) { alert('추출된 텍스트가 없어요!'); return; } dl(buildTxt(), 'transcript.txt'); }
+  function dlSrt() { if (!segs.length) { alert('추출된 자막이 없어요!'); return; } dl(buildSrt(), 'subtitle.srt'); }
+  function cp() { if (segs.length) navigator.clipboard.writeText(buildTxt()); }
+</script>
+</body>
+</html>
