@@ -30,11 +30,9 @@
     align-items: center;
     padding: 2rem 1rem 3rem;
   }
-
   .header { text-align: center; margin-bottom: 2rem; }
   .header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
   .header p { font-size: 13px; color: var(--muted); }
-
   .container { width: 100%; max-width: 740px; display: flex; flex-direction: column; gap: 14px; }
 
   #drop-zone {
@@ -52,24 +50,17 @@
   #drop-zone span { font-size: 13px; color: var(--muted); }
   input[type=file] { display: none; }
 
-  #step-guide {
+  #tip-box {
     display: none;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(167,139,250,0.3);
     border-radius: 12px;
-    padding: 16px 18px;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
   }
-  .step-title { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 12px; }
-  .steps { display: flex; flex-direction: column; gap: 8px; }
-  .step { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; }
-  .step-num {
-    width: 22px; height: 22px; border-radius: 50%;
-    background: var(--accent2); color: #fff;
-    font-size: 11px; font-weight: 600;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; margin-top: 1px;
-  }
-  .step em { color: var(--accent); font-style: normal; font-weight: 500; }
+  #tip-box strong { color: var(--accent); }
 
   #video-section { display: none; flex-direction: column; gap: 10px; }
 
@@ -84,7 +75,6 @@
     width: 100%; display: block;
     max-height: 360px; object-fit: contain; background: #000;
   }
-
   #subtitle-overlay {
     position: absolute;
     bottom: 44px; left: 50%; transform: translateX(-50%);
@@ -198,14 +188,11 @@
   </div>
   <input type="file" id="file-in" accept="video/*,audio/*">
 
-  <div id="step-guide">
-    <div class="step-title">🎯 시작하기 전에 — 탭 오디오 공유 방법</div>
-    <div class="steps">
-      <div class="step"><div class="step-num">1</div><span>아래 <em>"자막 추출 시작"</em> 버튼을 클릭하세요</span></div>
-      <div class="step"><div class="step-num">2</div><span>크롬 팝업이 뜨면 <em>"이 탭 (현재 탭)"</em>을 선택하세요</span></div>
-      <div class="step"><div class="step-num">3</div><span><em>"탭 오디오 공유"</em> 또는 <em>"오디오"</em> 체크박스를 반드시 ✅ 체크하세요</span></div>
-      <div class="step"><div class="step-num">4</div><span>영상이 자동 재생되며 실시간으로 자막이 추출됩니다 🎬</span></div>
-    </div>
+  <div id="tip-box">
+    🎙️ <strong>준비 완료!</strong> 아래 순서대로 진행하세요.<br>
+    1. 언어 선택 후 <strong>"자막 추출 시작"</strong> 클릭 → 마이크 권한 허용<br>
+    2. 영상이 자동 재생되며 <strong>마이크가 스피커 소리를 인식</strong>해요<br>
+    3. <strong>이어폰 사용 중이라면 빼주세요</strong> — 스피커로 소리가 나와야 마이크가 잡아요 🔊
   </div>
 
   <div id="video-section">
@@ -236,7 +223,7 @@
 
     <div id="status">
       <div class="dot"></div>
-      <span>실시간 음성 인식 중... 영상 오디오를 직접 잡고 있어요</span>
+      <span id="status-txt">마이크로 실시간 인식 중... 스피커 소리가 들려야 해요 🔊</span>
     </div>
   </div>
 
@@ -256,8 +243,10 @@
   </div>
 
   <div class="notice">
-    ⚠️ <strong>Chrome 전용</strong>입니다. 자막 추출 시작 후 팝업에서 <strong>현재 탭</strong>을 선택하고 <strong>오디오 공유</strong>를 반드시 체크해 주세요.<br>
-    말하는 도중엔 <span style="color:#a78bfa;">보라색</span>으로 실시간 표시, 확정되면 흰색으로 고정됩니다. 추출 완료 후 영상을 다시 재생하면 자막이 싱크에 맞게 표시돼요.
+    ⚠️ <strong>Chrome 권장</strong> · 마이크 권한을 허용해야 해요.<br>
+    🔊 <strong>이어폰을 빼고 스피커</strong>로 영상 소리가 나와야 마이크가 인식할 수 있어요.<br>
+    말하는 도중엔 <span style="color:#a78bfa;">보라색</span>으로 실시간 표시, 확정되면 흰색으로 고정됩니다.<br>
+    추출 완료 후 영상을 다시 재생하면 자막이 싱크에 맞게 표시돼요.
   </div>
 
 </div>
@@ -279,7 +268,7 @@
     if (!file) return;
     video.src = URL.createObjectURL(file);
     dz.style.display = 'none';
-    document.getElementById('step-guide').style.display = 'block';
+    document.getElementById('tip-box').style.display = 'block';
     document.getElementById('video-section').style.display = 'flex';
     document.getElementById('transcript-wrap').style.display = 'block';
     overlay.style.display = 'none';
@@ -291,30 +280,13 @@
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert('Chrome 브라우저를 사용해 주세요.'); return; }
 
-    let stream;
+    // Request microphone
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-        preferCurrentTab: true
-      });
+      await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch(e) {
-      alert('화면 공유가 취소되었어요.\n팝업에서 현재 탭을 선택하고 "오디오 공유"를 체크해 주세요.');
+      alert('마이크 권한을 허용해 주세요!\n브라우저 주소창 왼쪽 자물쇠 아이콘 → 마이크 허용');
       return;
     }
-
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      stream.getTracks().forEach(t => t.stop());
-      alert('"오디오 공유" 체크박스가 체크되지 않았어요!\n다시 시작해서 오디오 공유를 체크해 주세요.');
-      return;
-    }
-
-    // Route tab audio into Web Speech API
-    const audioCtx = new AudioContext();
-    const src = audioCtx.createMediaStreamSource(new MediaStream(audioTracks));
-    const dest = audioCtx.createMediaStreamDestination();
-    src.connect(dest);
 
     recog = new SR();
     recog.lang = document.getElementById('lang').value;
@@ -325,13 +297,11 @@
     document.getElementById('btn-start').disabled = true;
     document.getElementById('btn-stop').disabled = false;
     document.getElementById('status').style.display = 'flex';
-    document.getElementById('step-guide').style.display = 'none';
+    document.getElementById('tip-box').style.display = 'none';
     overlay.style.display = 'block';
     subFinal.textContent = '';
     subInterim.textContent = '';
     renderTranscript();
-
-    stream.getTracks().forEach(t => t.addEventListener('ended', stopRec));
 
     recog.onresult = e => {
       let interim = '';
@@ -352,7 +322,14 @@
       subInterim.textContent = interim;
     };
 
-    recog.onerror = e => { if (e.error !== 'aborted') console.warn('SR error:', e.error); };
+    recog.onerror = e => {
+      if (e.error === 'not-allowed') {
+        alert('마이크 권한이 없어요! 브라우저에서 마이크를 허용해 주세요.');
+        stopRec();
+      } else if (e.error !== 'aborted') {
+        console.warn('SR error:', e.error);
+      }
+    };
     recog.onend = () => { if (running) recog.start(); };
 
     video.play();
@@ -374,7 +351,7 @@
   function resetAll() {
     stopRec();
     dz.style.display = 'block';
-    document.getElementById('step-guide').style.display = 'none';
+    document.getElementById('tip-box').style.display = 'none';
     document.getElementById('video-section').style.display = 'none';
     document.getElementById('transcript-wrap').style.display = 'none';
     overlay.style.display = 'none';
@@ -384,7 +361,7 @@
     renderTranscript();
   }
 
-  // Sync subtitle overlay with video time after extraction
+  // Sync subtitle + highlight after extraction
   video.addEventListener('timeupdate', () => {
     if (running || segs.length === 0) return;
     const t = video.currentTime;
@@ -396,7 +373,6 @@
     } else {
       overlay.style.display = 'none';
     }
-    // Highlight active row in transcript box
     document.querySelectorAll('.seg-row').forEach((row, i) => {
       const seg = segs[i];
       if (seg && t >= seg.s && t <= seg.e) {
@@ -429,7 +405,8 @@
     return `${p2(m)}:${p2(s)}`;
   }
   function ts(sec) {
-    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60), ms = Math.round((sec%1)*1000);
+    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60),
+          s = Math.floor(sec%60), ms = Math.round((sec%1)*1000);
     return `${p2(h)}:${p2(m)}:${p2(s)},${String(ms).padStart(3,'0')}`;
   }
   function p2(n) { return String(n).padStart(2,'0'); }
