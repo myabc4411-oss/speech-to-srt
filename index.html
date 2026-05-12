@@ -35,6 +35,31 @@
   #drop-zone span { font-size: 13px; color: var(--muted); }
   input[type=file] { display: none; }
 
+  /* Large file warning */
+  #large-file-warn {
+    display: none;
+    background: var(--surface);
+    border: 1px solid rgba(247,139,113,0.4);
+    border-radius: 12px;
+    padding: 20px 22px;
+    text-align: center;
+  }
+  #large-file-warn .warn-ico { font-size: 32px; margin-bottom: 10px; }
+  #large-file-warn h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #fca084; }
+  #large-file-warn p { font-size: 13px; color: var(--muted); line-height: 1.7; margin-bottom: 16px; }
+  .warn-steps {
+    text-align: left;
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 2;
+    color: var(--text);
+  }
+  .warn-steps span { color: var(--accent); font-weight: 500; }
+  .btn-group { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
   #video-section { display: none; flex-direction: column; gap: 10px; }
   .video-wrapper { position: relative; background: #000; border-radius: 10px; overflow: hidden; line-height: 0; }
   video { width: 100%; display: block; max-height: 360px; object-fit: contain; background: #000; }
@@ -63,10 +88,14 @@
     padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--surface2); color: var(--text);
     font-size: 13px; font-family: inherit; font-weight: 500;
-    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap; text-decoration: none;
   }
   .btn:hover { border-color: var(--accent); color: var(--accent); }
   .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.orange { background: rgba(251,146,60,0.15); border-color: rgba(251,146,60,0.5); color: #fb923c; }
+  .btn.orange:hover { background: rgba(251,146,60,0.25); color: #fb923c; }
 
   #transcript-wrap { display: none; }
   .t-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -109,12 +138,29 @@
 </div>
 
 <div class="container">
+
   <div id="drop-zone" onclick="document.getElementById('file-in').click()">
     <div class="ico">📁</div>
     <strong>영상 또는 오디오 파일을 여기에 드래그하거나 클릭해서 선택</strong>
-    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등 · 용량 제한 없음</span>
+    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등</span>
   </div>
   <input type="file" id="file-in" accept="video/*,audio/*">
+
+  <!-- 큰 파일 안내 -->
+  <div id="large-file-warn">
+    <div class="warn-ico">⚠️</div>
+    <h3>영상이 너무 커서 바로 처리하기 어려워요</h3>
+    <p>20분 이상이거나 500MB가 넘는 파일은 먼저 MP3로 변환해야 해요.<br>아래 순서대로 하면 1~2분이면 끝나요!</p>
+    <div class="warn-steps">
+      1️⃣ 아래 버튼으로 <span>CloudConvert</span> 사이트로 이동<br>
+      2️⃣ 영상 파일 업로드 → <span>MP3</span> 선택 → 변환<br>
+      3️⃣ MP3 다운로드 후 여기에 다시 올리기
+    </div>
+    <div class="btn-group">
+      <a class="btn orange" href="https://cloudconvert.com/mp4-to-mp3" target="_blank">🔗 CloudConvert에서 MP3 변환하기</a>
+      <button class="btn" onclick="resetAll()">↺ 다른 파일 선택</button>
+    </div>
+  </div>
 
   <div id="video-section">
     <div class="video-wrapper">
@@ -163,6 +209,10 @@
   const overlay = document.getElementById('subtitle-overlay');
   const subText = document.getElementById('sub-text');
 
+  // 20분(1200초) 또는 500MB 초과 시 안내
+  const MAX_DURATION_SEC = 1200;
+  const MAX_SIZE_BYTES = 500 * 1024 * 1024;
+
   const dz = document.getElementById('drop-zone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('over'));
@@ -171,6 +221,21 @@
 
   async function handleFile(file) {
     if (!file) return;
+
+    // 용량 체크
+    if (file.size > MAX_SIZE_BYTES) {
+      showLargeFileWarn();
+      return;
+    }
+
+    // 영상 길이 체크
+    const duration = await getVideoDuration(file);
+    if (duration > MAX_DURATION_SEC) {
+      showLargeFileWarn();
+      return;
+    }
+
+    // 정상 처리
     video.src = URL.createObjectURL(file);
     dz.style.display = 'none';
     document.getElementById('video-section').style.display = 'flex';
@@ -181,17 +246,14 @@
     setProgress(5, '오디오 추출 중...');
 
     try {
-      // 1. Get API key from server
       const keyRes = await fetch('/api/key');
       const { key } = await keyRes.json();
       if (!key) throw new Error('API 키를 가져올 수 없어요');
 
-      // 2. Extract audio in browser
       setProgress(10, '오디오 디코딩 중...');
       const audioBlob = await extractAudio(file);
       setProgress(35, 'Groq Whisper로 전송 중...');
 
-      // 3. Send directly to Groq from browser
       const formData = new FormData();
       formData.append('file', audioBlob, 'audio.wav');
       formData.append('model', 'whisper-large-v3');
@@ -233,6 +295,24 @@
       document.getElementById('progress-status').textContent = '오류: ' + err.message;
       console.error(err);
     }
+  }
+
+  function getVideoDuration(file) {
+    return new Promise(resolve => {
+      const el = document.createElement('video');
+      el.preload = 'metadata';
+      el.onloadedmetadata = () => { resolve(el.duration); URL.revokeObjectURL(el.src); };
+      el.onerror = () => resolve(0);
+      el.src = URL.createObjectURL(file);
+    });
+  }
+
+  function showLargeFileWarn() {
+    dz.style.display = 'none';
+    document.getElementById('large-file-warn').style.display = 'block';
+    document.getElementById('video-section').style.display = 'none';
+    document.getElementById('progress-wrap').style.display = 'none';
+    document.getElementById('transcript-wrap').style.display = 'none';
   }
 
   function extractAudio(file) {
@@ -286,6 +366,17 @@
     document.getElementById('progress-status').textContent = status;
   }
 
+  function resetAll() {
+    video.src = ''; dz.style.display = 'block';
+    document.getElementById('large-file-warn').style.display = 'none';
+    document.getElementById('video-section').style.display = 'none';
+    document.getElementById('progress-wrap').style.display = 'none';
+    document.getElementById('transcript-wrap').style.display = 'none';
+    overlay.style.display = 'none';
+    document.getElementById('file-in').value = '';
+    segs = []; renderTranscript();
+  }
+
   video.addEventListener('timeupdate', () => {
     if (!segs.length) return;
     const t = video.currentTime;
@@ -299,16 +390,6 @@
       if (on) row.scrollIntoView({ block: 'nearest' });
     });
   });
-
-  function resetAll() {
-    video.src = ''; dz.style.display = 'block';
-    document.getElementById('video-section').style.display = 'none';
-    document.getElementById('progress-wrap').style.display = 'none';
-    document.getElementById('transcript-wrap').style.display = 'none';
-    overlay.style.display = 'none';
-    document.getElementById('file-in').value = '';
-    segs = []; renderTranscript();
-  }
 
   function renderTranscript() {
     const box = document.getElementById('transcript-box');
