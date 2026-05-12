@@ -35,7 +35,6 @@
   .header p { font-size: 13px; color: var(--muted); }
   .container { width: 100%; max-width: 740px; display: flex; flex-direction: column; gap: 14px; }
 
-  /* Drop zone */
   #drop-zone {
     border: 1.5px dashed var(--border);
     border-radius: 14px;
@@ -51,7 +50,6 @@
   #drop-zone span { font-size: 13px; color: var(--muted); }
   input[type=file] { display: none; }
 
-  /* Video */
   #video-section { display: none; flex-direction: column; gap: 10px; }
   .video-wrapper {
     position: relative; background: #000;
@@ -59,7 +57,6 @@
   }
   video { width: 100%; display: block; max-height: 360px; object-fit: contain; background: #000; }
 
-  /* Subtitle overlay */
   #subtitle-overlay {
     position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
     width: 92%; text-align: center; pointer-events: none; display: none;
@@ -71,7 +68,6 @@
     line-height: 1.55; max-width: 100%;
   }
 
-  /* Progress */
   #progress-wrap {
     display: none;
     background: var(--surface);
@@ -84,7 +80,6 @@
   .progress-bar-fill { height: 100%; background: var(--accent2); border-radius: 100px; transition: width 0.3s; width: 0%; }
   .progress-status { font-size: 12px; color: var(--accent); margin-top: 8px; }
 
-  /* Buttons */
   .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn {
     display: inline-flex; align-items: center; gap: 6px;
@@ -100,7 +95,6 @@
   .btn.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
   .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-  /* Transcript */
   #transcript-wrap { display: none; }
   .t-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .t-label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
@@ -127,7 +121,6 @@
   .seg-time { color: var(--muted); min-width: 88px; font-size: 12px; padding-top: 2px; flex-shrink: 0; }
   .seg-text { color: var(--text); }
 
-  /* Notice */
   .notice {
     padding: 12px 14px;
     background: rgba(251,191,36,0.07);
@@ -140,7 +133,7 @@
 
 <div class="header">
   <h1>🎬 speech-to-srt</h1>
-  <p>영상 음성을 자동으로 인식해 텍스트·SRT 자막으로 변환합니다</p>
+  <p>영상을 업로드하면 자동으로 음성을 인식해 텍스트·SRT 자막으로 변환합니다</p>
 </div>
 
 <div class="container">
@@ -148,11 +141,10 @@
   <div id="drop-zone" onclick="document.getElementById('file-in').click()">
     <div class="ico">📁</div>
     <strong>영상 또는 오디오 파일을 여기에 드래그하거나 클릭해서 선택</strong>
-    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등 · 최대 25MB</span>
+    <span>MP4 · MOV · AVI · MKV · WebM · MP3 · WAV · M4A 등 · 용량 제한 없음</span>
   </div>
   <input type="file" id="file-in" accept="video/*,audio/*">
 
-  <!-- Video player -->
   <div id="video-section">
     <div class="video-wrapper">
       <video id="player" controls></video>
@@ -165,19 +157,17 @@
     </div>
   </div>
 
-  <!-- Progress -->
   <div id="progress-wrap">
     <div class="progress-label">
-      <span id="progress-label-text">음성 인식 중...</span>
+      <span id="progress-label-text">처리 중...</span>
       <span id="progress-pct">0%</span>
     </div>
     <div class="progress-bar-bg">
       <div class="progress-bar-fill" id="progress-fill"></div>
     </div>
-    <div class="progress-status" id="progress-status">파일을 서버로 전송하는 중...</div>
+    <div class="progress-status" id="progress-status">오디오 추출 중...</div>
   </div>
 
-  <!-- Transcript -->
   <div id="transcript-wrap">
     <div class="t-header">
       <div>
@@ -195,7 +185,7 @@
 
   <div class="notice">
     ⚠️ 업로드하는 파일의 저작권 책임은 사용자에게 있습니다.<br>
-    📦 파일 크기 제한: 최대 25MB · 긴 영상은 오디오만 추출해서 올리면 더 빠릅니다.<br>
+    🎵 영상을 올리면 브라우저가 자동으로 오디오만 추출해서 전송해요 — 용량 걱정 없어요!<br>
     🔒 파일은 자막 추출 후 즉시 삭제되며 저장되지 않습니다.
   </div>
 
@@ -215,52 +205,123 @@
 
   async function handleFile(file) {
     if (!file) return;
-    if (file.size > 25 * 1024 * 1024) {
-      alert('파일 크기가 25MB를 초과해요. 더 작은 파일을 사용해 주세요.');
-      return;
-    }
 
-    // Show video preview
     video.src = URL.createObjectURL(file);
     dz.style.display = 'none';
     document.getElementById('video-section').style.display = 'flex';
-    document.getElementById('transcript-wrap').style.display = 'none';
-    segs = [];
-
-    // Start transcription
-    await transcribe(file);
-  }
-
-  async function transcribe(file) {
-    const progressWrap = document.getElementById('progress-wrap');
-    const progressFill = document.getElementById('progress-fill');
-    const progressPct = document.getElementById('progress-pct');
-    const progressStatus = document.getElementById('progress-status');
-
-    progressWrap.style.display = 'block';
     document.getElementById('transcript-wrap').style.display = 'block';
+    document.getElementById('progress-wrap').style.display = 'block';
+    segs = [];
+    renderTranscript();
 
-    // Animate progress (fake progress while waiting)
-    let pct = 0;
-    const interval = setInterval(() => {
-      if (pct < 90) {
-        pct += Math.random() * 8;
-        pct = Math.min(pct, 90);
-        progressFill.style.width = pct + '%';
-        progressPct.textContent = Math.round(pct) + '%';
-      }
-    }, 400);
-
-    progressStatus.textContent = '파일을 전송하고 음성을 인식하는 중...';
+    setProgress(5, '오디오 추출 중...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file, file.name);
-      formData.append('model', 'whisper-large-v3');
-      formData.append('language', 'ko');
-      formData.append('response_format', 'verbose_json');
-      formData.append('timestamp_granularities[]', 'segment');
+      // Extract audio using Web Audio API in the browser
+      const audioBlob = await extractAudio(file);
+      setProgress(30, '음성 인식 서버로 전송 중...');
+      await transcribe(audioBlob);
+    } catch (err) {
+      setError('오류: ' + err.message);
+      console.error(err);
+    }
+  }
 
+  // Extract audio from video file using Web Audio API + MediaRecorder
+  function extractAudio(file) {
+    return new Promise((resolve, reject) => {
+      const audioCtx = new AudioContext();
+      const reader = new FileReader();
+
+      reader.onload = async (e) => {
+        try {
+          setProgress(10, '오디오 디코딩 중...');
+          const arrayBuffer = e.target.result;
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+          setProgress(20, '오디오 인코딩 중...');
+
+          // Render to offline context (mono, 16kHz for smaller size)
+          const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * 16000, 16000);
+          const source = offlineCtx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(offlineCtx.destination);
+          source.start();
+
+          const renderedBuffer = await offlineCtx.startRendering();
+
+          // Convert to WAV
+          const wavBlob = audioBufferToWav(renderedBuffer);
+          resolve(wavBlob);
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      reader.onerror = () => reject(new Error('파일 읽기 실패'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // Convert AudioBuffer to WAV Blob
+  function audioBufferToWav(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const samples = buffer.getChannelData(0);
+    const dataLength = samples.length * 2;
+    const bufferLength = 44 + dataLength;
+    const arrayBuffer = new ArrayBuffer(bufferLength);
+    const view = new DataView(arrayBuffer);
+
+    function writeStr(offset, str) {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    }
+
+    writeStr(0, 'RIFF');
+    view.setUint32(4, bufferLength - 8, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * bitDepth / 8, true);
+    view.setUint16(32, numChannels * bitDepth / 8, true);
+    view.setUint16(34, bitDepth, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataLength, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  }
+
+  async function transcribe(audioBlob) {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'audio.wav');
+    formData.append('model', 'whisper-large-v3');
+    formData.append('language', 'ko');
+    formData.append('response_format', 'verbose_json');
+    formData.append('timestamp_granularities[]', 'segment');
+
+    // Fake progress animation while waiting
+    let pct = 30;
+    const interval = setInterval(() => {
+      if (pct < 90) {
+        pct += Math.random() * 5;
+        pct = Math.min(pct, 90);
+        setProgress(Math.round(pct), '음성 인식 중...');
+      }
+    }, 500);
+
+    try {
       const res = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
@@ -270,18 +331,13 @@
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error?.message || '서버 오류가 발생했어요');
+        throw new Error(err.error?.message || '서버 오류');
       }
 
       const data = await res.json();
+      setProgress(100, '완료! ✅');
+      setTimeout(() => { document.getElementById('progress-wrap').style.display = 'none'; }, 1000);
 
-      progressFill.style.width = '100%';
-      progressPct.textContent = '100%';
-      progressStatus.textContent = '완료! ✅';
-
-      setTimeout(() => { progressWrap.style.display = 'none'; }, 1000);
-
-      // Parse segments
       if (data.segments && data.segments.length > 0) {
         segs = data.segments.map(s => ({ s: s.start, e: s.end, t: s.text.trim() }));
       } else if (data.text) {
@@ -289,16 +345,23 @@
       }
 
       renderTranscript();
-
     } catch (err) {
       clearInterval(interval);
-      progressStatus.textContent = '오류: ' + err.message;
-      progressFill.style.background = '#f87171';
-      console.error(err);
+      throw err;
     }
   }
 
-  // Sync subtitle overlay with video playback
+  function setProgress(pct, status) {
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent = pct + '%';
+    document.getElementById('progress-status').textContent = status;
+  }
+
+  function setError(msg) {
+    document.getElementById('progress-fill').style.background = '#f87171';
+    document.getElementById('progress-status').textContent = msg;
+  }
+
   video.addEventListener('timeupdate', () => {
     if (segs.length === 0) return;
     const t = video.currentTime;
